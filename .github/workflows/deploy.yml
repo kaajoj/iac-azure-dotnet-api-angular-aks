@@ -1,0 +1,65 @@
+name: Build and Deploy (.NET Web API) to AKS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+env:
+  ACR_NAME: dotnetappazuredeployacr
+  ACR_LOGIN_SERVER: dotnetappazuredeployacr.azurecr.io
+  IMAGE_NAME: dotnetappazuredeploy
+  AKS_NAME: dotnetappazuredeploy-aks
+  RG_NAME: dotnetappazuredeploy-rg
+  VAULT_NAME: dotnetappazuredeploykv
+  SECRET_NAME: ConnectionStrings--DefaultConnection
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code/repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Login to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t $ACR_LOGIN_SERVER/$IMAGE_NAME:latest .
+          docker push $ACR_LOGIN_SERVER/$IMAGE_NAME:latest
+          # Build and push Angular app
+          cd src/my-web-ui
+          docker build -t $ACR_LOGIN_SERVER/angular-app:latest .
+          docker push $ACR_LOGIN_SERVER/angular-app:latest
+          cd ../../..
+
+      - name: Set AKS credentials
+        uses: azure/aks-set-context@v2
+        with:
+          resource-group: ${{ env.RG_NAME }}
+          cluster-name: ${{ env.AKS_NAME }}
+
+      - name: Get DB connection string from Key Vault
+        id: get-secret
+        run: |
+          az --version
+          CONN=$(az keyvault secret show --vault-name "${{ env.VAULT_NAME }}" --name "${{ env.SECRET_NAME }}" --query value -o tsv)
+          # Use GitHub Actions environment file to set step outputs (set-output is deprecated)
+          echo "conn=$CONN" >> "$GITHUB_OUTPUT"
+
+      - name: Create/Update Kubernetes secret
+        run: |
+          kubectl create namespace default --dry-run=client -o yaml | kubectl apply -f - || true
+          kubectl create secret generic db-secret --from-literal=DefaultConnection="${{ steps.get-secret.outputs.conn }}" --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy to AKS
+        run: |
+          kubectl apply -f infra/k8s

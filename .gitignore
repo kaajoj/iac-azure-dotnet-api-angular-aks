@@ -1,0 +1,29 @@
+# Terraform state files
+*.tfstate
+*.tfstate.backup
+
+# Crash logs
+crash.log
+
+# Ignore the .terraform directory
+.terraform/
+
+# Terraform lock file
+.terraform.lock.hcl
+
+# Plan files
+*.tfplan
+ 
+# Sensitive variable files (do not commit)
+terraform.tfvars
+# Node / JavaScript
+node_modules/
+**/node_modules/
+npm-debug.log*
+# Angular / build
+/**/dist/
+# Angular CLI build cache
+.angular/
+# Nginx / Docker
+# (optional) ignore local Docker build artifacts
+docker-compose.override.yml

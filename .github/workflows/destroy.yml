@@ -1,0 +1,62 @@
+name: Destroy Infrastructure
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  terraform-destroy:
+    runs-on: ubuntu-latest
+
+    env:
+      TF_VAR_subscription_id: ${{ secrets.TF_VAR_subscription_id }}
+      TF_VAR_sql_admin_login: ${{ secrets.TF_VAR_sql_admin_login }}
+      TF_VAR_sql_admin_password: ${{ secrets.TF_VAR_sql_admin_password }}
+      TF_VAR_connection_string: ${{ secrets.TF_VAR_connection_string }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.6
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+
+      - name: Terraform Destroy
+        working-directory: infra
+        run: terraform destroy -auto-approve
+# NOTE:
+# Terraform destroy requires access to the same Terraform state file used during provisioning.
+# This workflow uses a local Terraform state by default, which is stored only temporarily on the GitHub Actions runner.
+# Without a remote backend, the state file is lost after each run, and Terraform has no knowledge of existing infrastructure.
+# As a result, 'terraform destroy' may do nothing or fail to clean up resources properly ("No objects need to be destroyed").
+#
+# RECOMMENDED:
+# Configure a remote backend (e.g. Azure Storage Account) to store the Terraform state file persistently.
+# This provides:
+# - Durability: state is preserved between runs
+# - Locking: prevents concurrent changes
+# - Collaboration: shared state for team environments
+#
+# To do this, add a backend.tf file in the 'infra' directory with the following content:
+#
+# terraform {
+#   backend "azurerm" {
+#     resource_group_name  = "your-resource-group"
+#     storage_account_name = "yourstorageaccount"
+#     container_name       = "tfstate"
+#     key                  = "prod.terraform.tfstate"
+#   }
+# }
+#
+# Make sure the storage account and container exist in Azure before running this workflow.
+
